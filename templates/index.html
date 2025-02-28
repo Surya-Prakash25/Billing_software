@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Billing System</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <h1>Medical Shop Billing</h1>
+
+    <!-- Search Box -->
+    <input type="text" id="searchBox" placeholder="Search medicine..." onkeyup="searchMedicine()">
+    <button onclick="searchMedicine()">Search</button>
+
+    <div id="searchResults"></div>
+
+    <h2>Selected Medicines</h2>
+    <table border="1">
+        <thead>
+            <tr>
+                <th>Medicine</th>
+                <th>Price</th>
+                <th>Quantity</th>
+                <th>Total</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody id="billTable"></tbody>
+    </table>
+
+    <h3>Total Amount: ₹<span id="totalAmount">0</span></h3>
+    
+    <button onclick="generateBill()">Generate Bill</button>
+
+    <script>
+        let selectedMedicines = {};
+
+        function searchMedicine() {
+            let query = document.getElementById("searchBox").value;
+
+            fetch(`/search?query=${query}`)
+            .then(response => response.json())
+            .then(data => {
+                let resultsDiv = document.getElementById("searchResults");
+                resultsDiv.innerHTML = "";
+
+                data.forEach(med => {
+                    let medDiv = document.createElement("div");
+                    medDiv.innerHTML = `
+                        <strong>${med.name}</strong> - ₹${med.price}
+                        <button onclick="addToBill('${med.name}', ${med.price})">Add</button>
+                    `;
+                    resultsDiv.appendChild(medDiv);
+                });
+            })
+            .catch(error => console.error("Error:", error));
+        }
+
+        function addToBill(name, price) {
+            if (!selectedMedicines[name]) {
+                selectedMedicines[name] = { price: price, quantity: 1 };
+            } else {
+                selectedMedicines[name].quantity++;
+            }
+
+            updateBillTable();
+        }
+
+        function updateBillTable() {
+            let billTable = document.getElementById("billTable");
+            billTable.innerHTML = "";
+            let totalAmount = 0;
+
+            Object.keys(selectedMedicines).forEach(name => {
+                let med = selectedMedicines[name];
+                totalAmount += med.price * med.quantity;
+
+                let row = document.createElement("tr");
+                row.innerHTML = `
+                    <td>${name}</td>
+                    <td>₹${med.price}</td>
+                    <td>
+                        <button onclick="changeQuantity('${name}', -1)">-</button>
+                        <span>${med.quantity}</span>
+                        <button onclick="changeQuantity('${name}', 1)">+</button>
+                    </td>
+                    <td>₹${med.price * med.quantity}</td>
+                    <td><button onclick="removeMedicine('${name}')">Remove</button></td>
+                `;
+                billTable.appendChild(row);
+            });
+
+            document.getElementById("totalAmount").innerText = totalAmount;
+        }
+
+        function changeQuantity(name, change) {
+            if (selectedMedicines[name]) {
+                selectedMedicines[name].quantity += change;
+                if (selectedMedicines[name].quantity <= 0) {
+                    delete selectedMedicines[name];
+                }
+                updateBillTable();
+            }
+        }
+
+        function removeMedicine(name) {
+            delete selectedMedicines[name];
+            updateBillTable();
+        }
+
+        function generateBill() {
+            let billItems = Object.keys(selectedMedicines).map(name => ({
+                name: name,
+                price: selectedMedicines[name].price,
+                quantity: selectedMedicines[name].quantity
+            }));
+
+            if (billItems.length === 0) {
+                alert("Please add medicines to the bill.");
+                return;
+            }
+
+            fetch("/generate_bill", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ medicines: billItems })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.redirect_url) {
+                    window.location.href = data.redirect_url;
+                } else {
+                    alert("Error generating bill.");
+                }
+            })
+            .catch(error => console.error("Error:", error));
+        }
+    </script>
+</body>
+</html>
